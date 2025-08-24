@@ -6,90 +6,118 @@ import re
 from crawler.filtering import *
 
 
-# venue마다 형식이 달라서, 다 v2에서 사용하는 문자열로 변환
-# def as_str(x) -> str:
-#     if isinstance(x, dict) and 'value' in x:
-#         v = x.get('value', '')
-#         return '' if v is None else str(v)
-#
-#     return '' if x is None else (', '.join(map(str, x)) if isinstance(x, (list, tuple)) else str(x))
-
-# 입력값을 무조건 str로 바꿔주는 함수
 def change_str(x) -> str:
-    # dict 타입 & 'value' 키 처리
+    """
+    Converts the input value to a string unconditionally.
+
+    Args:
+        x: The input value to be converted into a string.
+
+    Returns:
+        x converted into a string.
+    """
+
+    # Handle dict type
     if isinstance(x, dict) and 'value' in x:
         v = x.get('value')
         return '' if v is None else str(v)
 
-    # None 처리
+    # Handle None
     if x is None:
         return ''
 
-    # list나 tuple 처리
+    # Handle list or tuple
     if isinstance(x, (list, tuple)):
         return ', '.join(str(item) for item in x)
 
-    # 그 외는 그냥 문자열 변환
+    # Otherwise, simply convert to string
     return str(x)
 
-# openreview api가 20번의 request 후 일으키는 레이트리밋 값을 파싱해서 그 시간을 리턴
+
 def parsing_reset_time(err) -> str | None:
-    # error가 dict 형태로 들어온 경우
+    """
+    Parses the rate limit value triggered by the OpenReview API after 20 requests
+    and returns the reset time.
+
+    Args:
+        err: The error raised by the OpenReview API.
+
+    Returns:
+        The resetTime obtained by parsing the rateLimit.
+    """
+
+    # When the error is in dict form
     if isinstance(err, dict):
         details = err.get('details') or {}
         if isinstance(details, dict) and details.get('resetTime'):
             return details['resetTime']
         if err.get('resetTime'):
-            print(f"레이트리밋 에러입니다. 시간은 {err['resetTime']}입니다.")
+            print(f"Rate limit error. Reset time is {err['resetTime']}.")
             return err['resetTime']
 
-    # exception으로 들어온 경우
+    # When received as an exception
     if hasattr(err, 'details') and isinstance(getattr(err, 'details'), dict):
         reset_time = err.details.get('resetTime')
         if reset_time:
-            print(f"레이트리밋 에러입니다. 시간은 {reset_time}입니다.")
+            print(f"Rate limit error. Reset time is {reset_time}.")
             return reset_time
 
-    # 문자열로 들어온 경우
+    # When received as a string
     msg = str(err)
     parsing_message = re.search(r'resetTime[\"\'\s:]*([=:]?)\s*[\"\']?([0-9T:\.\-]+Z)[\"\' ]?', msg)
     if parsing_message:
-        print(f"레이트리밋 에러입니다. 시간은 {parsing_message.group(2)}입니다.")
+        print(f"Rate limit error. Reset time is {parsing_message.group(2)}.")
         return parsing_message.group(2)
     return None
 
 def sleep_until_iso(iso: str, fallback_secs: int = 3):
-    """ISO8601(Z) 시간까지 대기. 실패 시 fallback 대기."""
+    """
+    Sleeps until the given ISO time.
+
+    Args:
+        iso: The resetTime in ISO format.
+        fallback_secs: The duration to sleep if parsing fails.
+    """
+
     try:
-        # datatime.fromisoformat에 맞게 ZEOTLS +00:00을 사용
-        # 문자열을 datatime 객체로 변환
+        # Use ZETOLS +00:00 to match datetime.fromisoformat
+        # Convert the string into a datetime object
         reset_time = datetime.fromisoformat(iso.replace('Z', '+00:00'))
 
-        # 현재 시간 가져와서 reset time이 얼마나 남았는지 계산 -> 남은 시간만큼 sleep
+        # Get the current time and calculate how much time remains until reset_time -> sleep for that duration
         now = datetime.now(timezone.utc)
         wait = max(0.0, (reset_time - now).total_seconds())
-        print(f"레이트리밋 에러가 해제되는 시간까지 {wait}초 만큼 남았습니다")
+        print(f"{wait} seconds remaining until the rate limit error is lifted.")
         time.sleep(wait)
     except Exception:
         time.sleep(fallback_secs)
 
-# search_notes를 사용하는데, 이건 relevance로 가져온다
-# 100개 넘으면 끊어서 가져온다. 그 사이는 3초 쉬기
-# 오류나면 3번 재시도. 만약 그 쉬라는 에러면 정말로 쉰다
-# 중복 제거
+
 def crawling_openreview_v2(
         search_query: str,
         limit: int,
         accept: bool = True
 ) -> list[dict[str, any]]:
-    print("openreview 크롤링을 시작합니다.")
+    """
+    Crawls papers using the OpenReview v2 API.
+
+    Args:
+        search_query: The query to pass to the OpenReview v2 API.
+        limit: The number of papers to retrieve.
+        accept: A boolean value indicating whether to filter by acceptance status.
+
+    Returns:
+        A list of crawled papers.
+    """
+
+    print("Starting OpenReview crawling.")
 
     documents = []
-    # 중복을 확인하기 위해 search한 paper의 title을 저장할 set
+    # A set to store the titles of searched papers for duplicate checking
     seen_title = set()
     client = openreview.api.OpenReviewClient(baseurl='https://api2.openreview.net')
 
-    # paper가 아닌 것을 필터링
+    # Filter out non-paper items
     no_paper = re.compile(r'/(Comment|Rebuttal|Review)\b', re.IGNORECASE)
     sleep_sec = 3
     batch = 100
@@ -100,8 +128,8 @@ def crawling_openreview_v2(
         offset = 0
 
         while paper_get_num < limit:
-            # batch와 가져와야 할 남은 paper 개수 중 더 작은 수 만큼 가져옴
-            print(f"현재 {len(documents)}개 찾았습니다. {limit - paper_get_num}개 남았습니다.")
+            # Retrieve the smaller of batch size or the remaining number of papers to fetch
+            print(f"Currently found {len(documents)} documents. {limit - paper_get_num} remaining.")
             get_paper = min(batch, max(1, limit - paper_get_num))
 
             notes = None
@@ -114,14 +142,14 @@ def crawling_openreview_v2(
                     )
                     break
                 except Exception as e:
-                    # 에러 발생 시 retry
+                    # Retry on error
                     print(f"error. retry ({attempt}/{max_retries}): {e}")
                     msg = str(e).lower()
 
-                    # error가 429 ratelimit error면 reset time을 parsing해서
-                    # 그 시간만큼 기다림
-                    # parsing에 실패하면 그냥 sleep_sec만큼 기다렸다가 시도
-                    # 일반 에러도 기다린 후 다시 retry
+                    # If the error is a 429 rate limit error, parse the reset time
+                    # and wait for that duration.
+                    # If parsing fails, just wait for sleep_sec before retrying.
+                    # For general errors, also wait and then retry.
                     if '429' in msg or 'ratelimiterror' in msg or 'too many requests' in msg:
                         reset_iso = None
                         if hasattr(e, 'args') and e.args:
@@ -136,12 +164,12 @@ def crawling_openreview_v2(
                     else:
                         time.sleep(sleep_sec if attempt == max_retries else max(1, attempt - 1))
 
-                    # max_retries에 도달하면 현재까지 찾은 documents를 리턴
+                    # If max_retries is reached, return the documents retrieved so far
                     if attempt == max_retries:
                         print(f"error and return {len(documents)} documents")
                         return documents
 
-            # 만약 받아온 notes가 없으면 종료
+            # If no notes are received, terminate
             if not notes:
                 break
 
@@ -149,16 +177,16 @@ def crawling_openreview_v2(
             for note in notes:
                 got_from_server += 1
 
-                # "replyto"가 있으면 paper가 아닌 댓글이나 리뷰 -> continue
+                # If "replyto" exists, it's a comment or review (not a paper) -> continue
                 if getattr(note, 'replyto', None):
                     continue
 
-                # invitation이 Comment/Rebuttal/Review에 해당하면 continue
+                # If the invitation corresponds to Comment/Rebuttal/Review, continue
                 inv = getattr(note, 'invitation', '') or ''
                 if no_paper.search(inv):
                     continue
 
-                # 찾은 논문에서 title, abstract 추출. 없으면 skip
+                # Extract title and abstract from the retrieved paper; skip if not available
                 c = note.content or {}
                 title = change_str(c.get('title')).strip()
                 abstract = change_str(c.get('abstract')).strip()
@@ -166,13 +194,13 @@ def crawling_openreview_v2(
                 if not title or not abstract:
                     continue
 
-                # accept, reject 등의 내용은 decision이다.
-                # decision, venue 추출
+                # Contents such as accept or reject are stored in 'decision'.
+                # Extract decision and venue.
                 decision = change_str(c.get('decision'))
                 venue = change_str(c.get('venue'))
 
-                # 만약 accept이 true라서 accept된 논문만 가져와야 한다면
-                # "reject"가 포함된 논문은 제외시킴
+                # If accept is True and only accepted papers should be retrieved,
+                # exclude papers that contain "reject"
                 if accept:
                     accept_check = f"{decision} {venue}".lower()
                     if 'reject' in accept_check:
@@ -183,12 +211,12 @@ def crawling_openreview_v2(
 
                 forum_id = getattr(note, 'forum', None) or note.id
 
-                # 제목 기준으로 중복 체크
+                # Check for duplicates based on title
                 if title in seen_title:
                     continue
                 seen_title.add(forum_id)
 
-                # 찾은 것들 document에 추가
+                # Add the retrieved items to documents
                 documents.append({
                     'title': title,
                     'url': f"https://openreview.net/forum?id={forum_id}",
@@ -197,12 +225,12 @@ def crawling_openreview_v2(
                     'decision_info': decision_info
                 })
 
-                # 가져온 paper 개수가 limit과 같거나 넘으면 종료
+                # Terminate if the number of retrieved papers is greater than or equal to the limit
                 paper_get_num += 1
                 if paper_get_num >= limit:
                     break
 
-            # 페이징 구현. 페이징마다 sleep_sec만큼 기다림
+            # Implement paging. Wait for sleep_sec after each page.
             offset += got_from_server
             if paper_get_num < limit:
                 time.sleep(sleep_sec)
@@ -211,6 +239,6 @@ def crawling_openreview_v2(
     except Exception as e:
         print(f"error and return {len(documents)} documents")
 
-    print(f"{len(documents)}개의 크롤링을 완료하였습니다.")
+    print(f"Completed crawling {len(documents)} documents.")
     return documents
 
