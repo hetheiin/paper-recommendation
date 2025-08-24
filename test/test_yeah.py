@@ -17,5 +17,8 @@ print(query)
 query2 = soft_parsing_openreview(keyword_dict)
 print(query2)
 
-document = main_crawling(keyword_dict, field="all", num=150, date=None, accept=False, openreview=True)
+# document = main_crawling(keyword_dict, field="all", num=150, date=None, accept=False, openreview=True)
+# document_print(document)
+
+document = main_crawling(keyword_dict, field="all", num=150, date=None, accept=True)
 document_print(document)
