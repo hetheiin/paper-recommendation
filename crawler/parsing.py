@@ -52,10 +52,6 @@ def soft_parsing_arxiv(keyword_dict: dict, field: str = "all") -> str:
     else:
         return optional_query_block
 
-_ES_SPECIALS = r'[\+\-\=\&\|\>\<\!\(\)\{\}\[\]\^"~\*\?:\\\/]'
-
-def _escape_es(s: str) -> str:
-    return re.sub(_ES_SPECIALS, lambda m: '\\' + m.group(0), s)
 
 def _strip_outer_quotes(s: str) -> str:
     s = s.strip()
@@ -65,7 +61,6 @@ def _strip_outer_quotes(s: str) -> str:
 
 def _as_es_token(raw: str, phrase: bool = True) -> str:
     x = _strip_outer_quotes(str(raw or ""))
-    x = _escape_es(x)
     if phrase and any(ch.isspace() for ch in x):
         return f"\"{x}\""
     return x
