@@ -2,45 +2,50 @@ from datetime import datetime
 import re
 from crawler.query import *
 from crawler.openreview_crawling import *
+from datetime import datetime, timezone
 
-def v1_accept_filter(documents: list[dict[str, any]]) -> list[dict[str, any]]:
-
-    # Accept으로 간주할 키워드 패턴 (대소문자 무시)
-    # Oral, Poster, Spotlight 발표도 Accept된 논문이므로 포함
-    accept_pattern = re.compile('accept|oral|poster|spotlight', re.IGNORECASE)
-
-    filtered_documents = [
-        doc for doc in documents
-        if accept_pattern.search(doc.get('decision_info', ''))
-    ]
-
-    return filtered_documents
-
-# 최종 업데이트 기준
 def arxiv_date_filter(documents: list[dict[str, any]], date: list[int]) -> list[dict[str, any]]:
-    if not date or len(date) != 2:
-        return documents
+    """
+    Filters the documents obtained from the arXiv API according to the given date.
 
+    Args:
+        documents: Paper documents retrieved by crawling.
+        date: A list specifying the filtering years.
+
+    Returns:
+        Filtered documents.
+    """
+
+    print(f"Starting date filtering on {len(documents)} documents.")
     start_year, end_year = date[0], date[1]
     filtered_documents = []
 
+    # If paper_year is between start_year and end_year, append it to filtered_documents
     for doc in documents:
-        if 'updated_date' in doc and isinstance(doc['updated_date'], datetime):
-            paper_year = doc['updated_date'].year
-            if start_year <= paper_year <= end_year:
-                filtered_documents.append(doc)
+        paper_year = doc['updated_date'].year
+        if start_year <= paper_year <= end_year:
+            filtered_documents.append(doc)
 
+    print(f"Filtered {len(filtered_documents)} documents.")
     return filtered_documents
 
-from datetime import datetime, timezone
-from typing import Any as any
 
 def openreview_date_filter(documents: list[dict[str, any]], date: list[int]) -> list[dict[str, any]]:
+    """
+    Filters the documents obtained from the arXiv API according to the given date.
+    In OpenReview, dates can appear in multiple formats.
+    Therefore, the fields are checked in the following priority order:
+    content.year (or year) > mdate (ms) > cdate (ms).
 
-# 우선순위: content.year(또는 year) > mdate(ms) > cdate(ms)
+    Args:
+        documents: Paper documents retrieved by crawling.
+        date: A list specifying the filtering years.
 
-    if not date or len(date) != 2:
-        return documents
+    Returns:
+        Filtered documents.
+    """
+
+    print(f"Starting date filtering among {len(documents)} documents.")
 
     start_year, end_year = date[0], date[1]
     filtered_documents = []
@@ -48,46 +53,31 @@ def openreview_date_filter(documents: list[dict[str, any]], date: list[int]) -> 
     for doc in documents:
         paper_year = None
 
-        # content.year 또는 year
+        # If content.year or year exists, use it as paper_year
         if isinstance(doc.get('year'), int):
             paper_year = doc['year']
         elif isinstance(doc.get('content_year'), int):
             paper_year = doc['content_year']
 
-        # mdate(수정 시각, ms)
+        # If content.year or year does not exist, use mdate instead
+        # mdate (last modified time in ms)
         if paper_year is None and isinstance(doc.get('mdate'), (int, float)):
             try:
                 paper_year = datetime.fromtimestamp(doc['mdate'] / 1000, tz=timezone.utc).year
             except Exception:
                 pass
 
-        # cdate(생성 시각, ms)
+        # If mdate is also unavailable, use cdate (creation time in ms) instead
         if paper_year is None and isinstance(doc.get('cdate'), (int, float)):
             try:
                 paper_year = datetime.fromtimestamp(doc['cdate'] / 1000, tz=timezone.utc).year
             except Exception:
                 pass
 
-        # 필터 적용
+        # If paper_year is available and falls between start_year and end_year, add it to filtered_documents
         if paper_year is not None and start_year <= paper_year <= end_year:
             filtered_documents.append(doc)
+        print(f"Filtered {len(filtered_documents)} documents.")
 
     return filtered_documents
 
-
-
-def na_filter(documents: list[dict[str, any]]) -> list[dict[str, any]]:
-    filtered_documents = []
-    for doc in documents:
-        title = str(doc.get('title', '') or '').strip()
-        abstract = str(doc.get('abstract', '') or '').strip()
-        url = str(doc.get('url', '') or '').strip()
-
-        ok_title = (title and title.upper() != 'N/A')
-        ok_abstract = (abstract and abstract.upper() != 'N/A')
-        ok_url = (url and url.upper() != 'N/A' and url.startswith(('http://', 'https://')))
-
-        if ok_title and ok_abstract and ok_url:
-            filtered_documents.append(doc)
-
-    return filtered_documents

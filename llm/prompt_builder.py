@@ -30,10 +30,8 @@ class PromptBuilder:
     def system_ko(self) -> str:
         return (
             "당신은 정확한 연구 요약가입니다. 출력은 GitHub‑Flavored Markdown으로 작성합니다. "
-            "사적 추론(<think> ... </think>)은 절대 출력하지 마세요. "
-            "최종 답변은 <final> ... </final> 로 감싸서 출력하라"
             "오직 최종결과만 한국어로 작성합니다. "
-            "링크는 입력 url만 사용하고, '~입니다' 톤으로 간결하게 작성합니다."
+            "'~입니다' 톤으로 간결하게 작성합니다."
         )
 
     def _docs_json(self, docs: List[Dict[str,Any]]) -> str:
@@ -47,8 +45,7 @@ class PromptBuilder:
             "detailed": "TL;DR 50–80자, 카드당 불릿 8–12개."
         }[self.style]
         user = f"""아래 JSON의 user_instruction과 papers를 바탕으로,
-각 논문을 '리서치 카드' 형식으로 요약
-제목, 요약, 링크 순서로 작성
+각 2~3문장의 간단한 논문의 요약을 작성해주세요.
 
 입력 JSON:
 ```

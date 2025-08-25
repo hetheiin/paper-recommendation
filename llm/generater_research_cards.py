@@ -3,6 +3,13 @@ from __future__ import annotations
 from typing import List, Dict, Any, Tuple
 from .base_model import BaseLocalLLM, LocalLLMConfig
 from .prompt_builder import PromptBuilder
+import re
+
+FINAL_RE_2 = re.compile(r"assistant\s*(.*)", re.DOTALL | re.IGNORECASE)
+
+def extract_final(text: str) -> str:
+    final_contents = FINAL_RE_2.search(text)
+    return final_contents.group(1).strip()
 
 def generate_research_cards_markdown(
     docs: List[Dict[str,Any]],
@@ -31,7 +38,8 @@ def generate_research_cards_markdown(
         llm = BaseLocalLLM(cfg)
     else:
         llm = BaseLocalLLM(cfg, model, tokenizer)
-    return llm.generate(system=prompts["system"], user=prompts["user"])
+    res = llm.generate(system=prompts["system"], user=prompts["user"])
+    return extract_final(res)
 
 
 def generate_single_card_markdown(
@@ -61,7 +69,6 @@ def generate_single_card_markdown(
         tokenizer=tokenizer,
     )
 
-
 # 2) 여러 카드(문자열)로부터 최종 비교표만 생성
 def generate_comparison_table_from_cards(
     cards_md: List[str],
@@ -83,7 +90,6 @@ def generate_comparison_table_from_cards(
     system = (
         "당신은 정확한 연구 요약가입니다. 출력은 GitHub‑Flavored Markdown으로 작성합니다. "
         "오직 최종 결과만 한국어로 작성합니다."
-        "결과는 반드시 <final> ... </final> 로 감싸서 출력합니다.\n"
     )
     # 카드 리스트를 그대로 넣어, 표만 만들도록 요구
     joined_cards = "\n\n---\n\n".join(cards_md)
@@ -95,7 +101,6 @@ def generate_comparison_table_from_cards(
         "1) 표만 출력합니다. 불릿/문단/설명은 출력하지 않습니다.\n"
         "2) 수치가 없으면 해당 셀은 '-' 로 표기합니다.\n"
         "3) 링크는 카드 내에 있는 URL만 사용합니다.\n"
-        "4) 결과는 반드시 <final> ... </final> 로 감싸서 출력합니다.\n"
         
         f"사용자 질의: {query}\n\n"
         "입력 카드들:\n"
@@ -112,4 +117,5 @@ def generate_comparison_table_from_cards(
         llm = BaseLocalLLM(cfg)
     else:
         llm = BaseLocalLLM(cfg, model, tokenizer)
-    return llm.generate(system=system, user=user)
+    res = llm.generate(system=system, user=user)
+    return extract_final(res)

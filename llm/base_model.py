@@ -9,18 +9,15 @@ import re #think 태그 제거용
 
 THINK_RE = re.compile(r"<\s*think\s*>.*?<\s*/\s*think\s*>", re.DOTALL | re.IGNORECASE)
 FINAL_RE = re.compile(r"<\s*final\s*>(.*?)<\s*/\s*final\s*>", re.DOTALL | re.IGNORECASE)
+FINAL_RE_2 = re.compile(r"끝\s*(.*)", re.DOTALL | re.IGNORECASE)
 
 def _strip_think(text: str) -> str:
     text_wo_think = re.sub(THINK_RE, "", text).strip()
     return text_wo_think
 
 def extract_final(text: str) -> str:
-    """
-    <final> ... </final> 블록 안의 내용을 반환합니다.
-    해당 블록이 없으면 원문 전체를 반환합니다.
-    """
-    final_contents = re.findall(r"<final>(.*?)</final>", text, re.DOTALL)
-    return final_contents
+    final_contents = FINAL_RE_2.search(text)
+    return final_contents.group(1).strip()
 
 try:
     from transformers import BitsAndBytesConfig
@@ -104,6 +101,5 @@ class BaseLocalLLM:
         )
         raw = self.tok.decode(out[0], skip_special_tokens=True).strip()
         txt = _strip_think(raw)
-        extracted = extract_final(txt)
 
-        return extracted
+        return txt

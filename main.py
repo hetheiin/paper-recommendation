@@ -9,6 +9,8 @@ from crawler import *
 from llm.generater_research_cards import generate_single_card_markdown, generate_comparison_table_from_cards
 
 
+REALTIMETEST = True
+
 def print_guidelines():
     print()
     print("=== Real-time Web-based Research Paper Search Tool ===")
@@ -41,9 +43,12 @@ def pretty_print_cards(docs, qu, model, tokenizer):
             model=model,
             tokenizer=tokenizer,
         )
-        print(md[-1].strip())       # 개별 카드 출력
-        print("\n"*3)
-        outputs.append(md[-1].strip())
+        print("============================")
+        print("Title:", doc["title"])
+        print("Summary:\n", md.replace(". ", ". \n"))       # 개별 카드 출력
+        print("link:", doc["url"])
+        print("\n")
+        outputs.append(doc["title"] +" "+ md +" "+ doc["url"])
 
     # 카드들로 최종 비교표 생성
     final_table = generate_comparison_table_from_cards(
@@ -61,7 +66,7 @@ def pretty_print_cards(docs, qu, model, tokenizer):
     print("\n============================")
     print(" Final Comparison Table ")
     print("============================\n")
-    print(final_table[-1])
+    print(final_table)
 
 def setups():
     setup_rag()
@@ -80,13 +85,19 @@ def main():
 
     # extract keywords
     keywords = run_preprocess(query)
-    print(keywords)
+    print("extracted keywords: ", keywords)
 
     # --- search
 
-    queryss = soft_parsing_openreview(keywords, field="all")
-    print(queryss)
-    documents = main_crawling(keywords, field="all", num=50, sort_op="relevance", date=None, accept = False, openreview = False)
+    is_accepted = True if input("Only ACCEPTED papers? yes/no: ") == "yes" else False
+    datalist_str = input("Date range for paper search? ex) '2022-2023' or 'anytime': ").strip()
+    date_list = []
+    if "anytime" in datalist_str:
+        date_list = None
+    else:
+        date_list = [int(element) for element in datalist_str.split("-")]
+
+    documents = main_crawling(keywords, field="all", num=300, sort_op="relevance", date=date_list, accept = is_accepted, openreview = REALTIMETEST)
     document_print(documents)
 
     # filter documents
